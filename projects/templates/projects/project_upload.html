@@ -1,0 +1,12 @@
+<!-- project_upload.html -->
+
+{% extends 'base.html' %}
+
+{% block content %}
+    <h2>Create Project and Upload Documents</h2>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Create Project</button>
+    </form>
+{% endblock %}

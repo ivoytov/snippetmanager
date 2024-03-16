@@ -1,0 +1,12 @@
+<!-- chat.html in your templates directory -->
+
+{% extends 'base.html' %}
+
+{% block content %}
+    <h2>Chat</h2>
+    <form action="{% url 'chat' pk=project.pk %}" method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Send</button>
+    </form>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <h2>{{ project.name }}</h2>
+
+    <h3>Upload New Document</h3>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Upload</button>
+    </form>
+
+    <h3>Documents</h3>
+    <ul>
+        {% for document in documents %}
+            <li>{{ document.file.name }}</li>  
+        {% endfor %}
+    </ul>
+
+{% endblock %}
