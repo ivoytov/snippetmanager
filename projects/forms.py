@@ -1,15 +1,10 @@
 from django import forms
-from .models import Project, Snippet
+from .models import Project
 
 class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
         fields = ['name']
-
-class SnippetForm(forms.ModelForm):
-    class Meta:
-        model = Snippet
-        fields = ['text']
 
 class ChatForm(forms.Form):
     message = forms.CharField(widget=forms.Textarea(attrs={'rows': 4, 'cols': 40}), label='Your Prompt')

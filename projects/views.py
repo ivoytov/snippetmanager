@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import Project, Snippet, Document
+from .models import Project, Document
 from .forms import ProjectForm, ChatForm, DocumentForm
 from django.http import HttpResponse
 from urllib.parse import unquote
@@ -30,18 +30,7 @@ from llama_index.core.query_engine import RetrieverQueryEngine
 
 # Get an instance of a logger
 logger = logging.getLogger("file_chunking")
-Settings.chunk_size = 1000
-
-
-def create_snippets_from_content(content, document):
-    chunk_size = 1000
-    overlap = int(chunk_size * 0.2)
-    position = 0
-    while position < len(content):
-        chunk_end = position + chunk_size
-        snippet_text = content[position : chunk_end + overlap]
-        Snippet.objects.create(text=snippet_text, document=document)
-        position += chunk_size - overlap
+Settings.chunk_size = 512
 
 
 def project_list(request):
@@ -70,10 +59,9 @@ def project_detail(request, pk):
                 content = doc.read().decode("utf-8")
                 llama_docs.append(
                     LlamaDocument(
-                        text=content, metadata={"filename": doc.file, "name": doc.name}
+                        text=content, metadata={"name": doc.name}
                     )
                 )
-                create_snippets_from_content(content, document)
 
             # create parser and parse document into nodes
             parser = SentenceSplitter()
@@ -95,6 +83,7 @@ def project_detail(request, pk):
             # can also set index_id to save multiple indexes to the same folder
             index.set_index_id(pk)
             index.storage_context.persist(persist_dir="./storage")
+            logger.debug(f"Llama storage Index {pk} updated")
 
             return redirect(
                 "project_detail", pk=pk
@@ -126,71 +115,14 @@ def chat(request, pk):
         form = ChatForm(request.POST)
         if form.is_valid():
             message = form.cleaned_data["message"]
-            chat_gpt_response, used_snippets = (
-                "",
-                [],
-            )  # Placeholder for the ChatGPT response and used snippets
-
-            # Convert text to embeddings using OpenAI
-
-            client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
-            response = client.embeddings.create(
-                input=message, model="text-embedding-3-small"
-            )
-
-            # Assuming response contains the embeddings in the desired format
-            user_embedding = response.data[0].embedding
-
-            # Find up to 10 most similar snippets
-            snippets = []
-            for snippet in Snippet.objects.filter(document__project_id=project.pk):
-                if snippet.embeddings:  # Ensure the snippet has embeddings
-                    similarity = 1 - cosine(snippet.embeddings, user_embedding)
-                    if similarity > 0.3:
-                        # Using a min heap to keep top 3 most similar snippets
-                        heapq.heappush(snippets, (similarity, snippet))
-                        if len(snippets) > 10:
-                            heapq.heappop(
-                                snippets
-                            )  # Remove snippet with lowest similarity if more than 3
-
-            # If we found similar snippets, prepare prompt for ChatGPT
-            if snippets:
-                combined_prompt = "Based on the following snippets: \n"
-                snippets.sort(reverse=True)  # Get snippets sorted by similarity
-                for _, snippet in snippets:
-                    combined_prompt += f"\n- {snippet.text}"
-                    used_snippets.append(snippet)
-
-                snippets.sort(reverse=True)
-                combined_prompt += f"\n\n{message}"
-
-                # Now, generate a response from ChatGPT
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant."},
-                        {"role": "user", "content": combined_prompt},
-                    ],
-                )
-
-                chat_gpt_response = response.choices[0].message.content
-
-            else:
-                chat_gpt_response = (
-                    "I couldn't find similar snippets. How can I assist you?"
-                )
 
             # to load index later, make sure you setup the storage context
             # this will loaded the persisted stores from persist_dir
             storage_context = StorageContext.from_defaults(persist_dir="./storage")
 
             # then load the index object
-
             # if loading an index from a persist_dir containing multiple indexes
             index = load_index_from_storage(storage_context, index_id=f"{pk}")
-
 
             # configure retriever
             retriever = VectorIndexRetriever(
@@ -200,7 +132,7 @@ def chat(request, pk):
 
             # configure response synthesizer
             response_synthesizer = get_response_synthesizer(
-                response_mode="refine",
+                response_mode="compact",
             )
 
             # assemble query engine
@@ -210,16 +142,14 @@ def chat(request, pk):
             )
 
             # query
-            llama_response = query_engine.query(message)
-            pdb.set_trace()
+            response = query_engine.query(message)
             return render(
                 request,
                 "chat_results.html",
                 {
                     "form": form,
-                    "response": chat_gpt_response,
-                    "llama_response": llama_response,
-                    "used_snippets": used_snippets,
+                    "response": response,
+                    "used_snippets": response.source_nodes,
                 },
             )
 

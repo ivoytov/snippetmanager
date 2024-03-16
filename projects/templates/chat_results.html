@@ -9,11 +9,6 @@
     </form>
 
     {% if response %}
-        <h3>Response from Llama</h3>
-        <p>{{ llama_response }}</p>
-    {% endif %}
-
-    {% if response %}
         <h3>Response from AI</h3>
         <p>{{ response }}</p>
     {% endif %}
@@ -22,7 +17,7 @@
         <h3>Snippets Included in the Prompt</h3>
         <ul>
         {% for snippet in used_snippets %}
-            <li><b>{{ snippet.document.name }}</b>: {{ snippet.text }}</li>
+            <li><b>{{ snippet.metadata }}</b>: {{ snippet.text }}</li>
         {% endfor %}
         </ul>
     {% endif %}

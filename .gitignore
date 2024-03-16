@@ -3,3 +3,6 @@
 /debug.log
 /media
 /storage
+projects/__pycache__
+projects/__pycache__/forms.cpython-38.pyc
+projects/__pycache__/admin.cpython-38.pyc
