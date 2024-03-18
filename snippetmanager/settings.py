@@ -27,6 +27,7 @@ SECRET_KEY = '*sg_+gbpf32zymb-+vprqw%8zkc*&pmwou2e%@e4)q8vltmm#e'
 DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'king-prawn-app-yljil.ondigitalocean.app']
+CSRF_TRUSTED_ORIGINS = ['https://king-prawn-app-yljil.ondigitalocean.app']
 
 # Application definition
 

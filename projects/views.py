@@ -57,7 +57,7 @@ def project_detail(request, pk):
                 )
 
             # create parser and parse document into nodes
-            parser = SentenceSplitter()
+            parser = SentenceSplitter(chunk_size=512)
             nodes = parser.get_nodes_from_documents(llama_docs)
 
             # create storage context using default stores
