@@ -1,15 +1,8 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from .models import Project, Document
 from .forms import ProjectForm, ChatForm, DocumentForm
-from django.http import HttpResponse
-from urllib.parse import unquote
-from openai import OpenAI
 from django.conf import settings
-from scipy.spatial.distance import cosine
-import pdb
-import heapq
 import logging
-import os.path
 from llama_index.core import (
     VectorStoreIndex,
     Document as LlamaDocument,

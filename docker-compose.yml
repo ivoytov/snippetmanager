@@ -1,0 +1,9 @@
+version: '3'
+services:
+  snippetmanager:
+    image: django-app
+    environment:
+      - OPENAI_API_KEY=$OPENAI_API_KEY
+      - DJANGO_DEBUG=True
+    ports:
+    - "8000:8000"
