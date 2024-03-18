@@ -26,8 +26,7 @@ SECRET_KEY = '*sg_+gbpf32zymb-+vprqw%8zkc*&pmwou2e%@e4)q8vltmm#e'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'king-prawn-app-yljil.ondigitalocean.app']
 
 # Application definition
 
