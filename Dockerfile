@@ -15,6 +15,8 @@ COPY . /usr/src/app
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
+RUN python manage.py migrate
+
 # Expose port 8000 to communicate with the outside world
 EXPOSE 8000
 
