@@ -1,29 +1,29 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from .models import Project, Document
-from .forms import ProjectForm, ChatForm, DocumentForm
-from django.conf import settings
 import logging
-from llama_index.core import (
-    VectorStoreIndex,
-    Document as LlamaDocument,
-    StorageContext,
-    load_index_from_storage,
-    Settings,
-)
-from llama_index.core import load_index_from_storage
+
+from django.conf import settings
+from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from llama_index.core import Document as LlamaDocument
+from llama_index.core import (Settings, StorageContext, VectorStoreIndex,
+                              get_response_synthesizer,
+                              load_index_from_storage)
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.core.storage.index_store import SimpleIndexStore
 from llama_index.core.vector_stores import SimpleVectorStore
-from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core import VectorStoreIndex, get_response_synthesizer
-from llama_index.core.retrievers import VectorIndexRetriever
-from llama_index.core.query_engine import RetrieverQueryEngine
 
+from .forms import ChatForm, DocumentForm, ProjectForm
+from .models import Document, Project
+
+
+Settings.chunk_size = 512
 
 
 # Get an instance of a logger
 logger = logging.getLogger("file_chunking")
-Settings.chunk_size = 512
 
 
 def project_list(request):
@@ -32,7 +32,6 @@ def project_list(request):
 
 
 def project_detail(request, pk):
-    global vector_index
     project = get_object_or_404(Project, pk=pk)
     new_documents = project.documents.all()
     if request.method == "POST":
@@ -52,7 +51,7 @@ def project_detail(request, pk):
                 content = doc.read().decode("utf-8")
                 llama_docs.append(
                     LlamaDocument(
-                        text=content, metadata={"name": doc.name}
+                        text=content, doc_id=document.pk, metadata={"name": doc.name}
                     )
                 )
 
@@ -60,12 +59,19 @@ def project_detail(request, pk):
             parser = SentenceSplitter(chunk_size=512)
             nodes = parser.get_nodes_from_documents(llama_docs)
 
-            # create storage context using default stores
-            storage_context = StorageContext.from_defaults(
-                docstore=SimpleDocumentStore(),
-                vector_store=SimpleVectorStore(),
-                index_store=SimpleIndexStore(),
-            )
+            try:
+                storage_context = StorageContext.from_defaults(
+                    docstore=SimpleDocumentStore(),
+                    vector_store=SimpleVectorStore(),
+                    index_store=SimpleIndexStore(),
+                    persist_dir="./storage")
+            except FileNotFoundError:
+                # create storage context using default stores
+                storage_context = StorageContext.from_defaults(
+                    docstore=SimpleDocumentStore(),
+                    vector_store=SimpleVectorStore(),
+                    index_store=SimpleIndexStore(),
+                )
 
             # create (or load) docstore and add nodes
             storage_context.docstore.add_documents(nodes)
@@ -76,7 +82,6 @@ def project_detail(request, pk):
             # can also set index_id to save multiple indexes to the same folder
             index.set_index_id(pk)
             index.storage_context.persist(persist_dir="./storage")
-            logger.debug(f"Llama storage Index {pk} updated")
 
             return redirect(
                 "project_detail", pk=pk
@@ -143,6 +148,7 @@ def chat(request, pk):
                     "form": form,
                     "response": response,
                     "used_snippets": response.source_nodes,
+                    "project_id": project.pk
                 },
             )
 
@@ -151,3 +157,20 @@ def chat(request, pk):
 
     context = {"form": form, "project": project}
     return render(request, "projects/chat.html", context)
+
+
+
+
+def delete_document(request, project_id, document_id):
+    if request.method == "POST":  # Ensure the request to delete is via POST
+        project = get_object_or_404(Project, pk=project_id)
+        document = get_object_or_404(Document, pk=document_id, project=project)
+        document.delete()  # This deletes the document object from the database
+        # update index
+        storage_context = StorageContext.from_defaults(persist_dir="./storage")
+        index = load_index_from_storage(storage_context, index_id=f"{project_id}")
+        index.delete_ref_doc(f"{document_id}")
+
+        return HttpResponseRedirect(
+            reverse("project_detail", args=[project_id])
+        )  # Redirect to project's detail view
