@@ -17,7 +17,11 @@
         <h3>Snippets Included in the Prompt</h3>
         <ul>
         {% for snippet in used_snippets %}
-            <li><b>{{ snippet.metadata }}</b>: {{ snippet.text }}</li>
+            <li>
+                <a href="{% url 'read_document' project_id snippet.metadata.document_id %}?start_char_idx={{ snippet.node.start_char_idx }}&end_char_idx={{ snippet.node.end_char_idx}}" target="_blank">
+                {{ snippet.metadata.name }}
+                </a>
+            </li>
         {% endfor %}
         </ul>
     {% endif %}

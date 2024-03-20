@@ -1,7 +1,10 @@
 import logging
+import pdb
 
 from django.conf import settings
 from django.http import HttpResponseRedirect
+from django.utils.html import mark_safe, escape
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from llama_index.core import Document as LlamaDocument
@@ -17,7 +20,6 @@ from llama_index.core.vector_stores import SimpleVectorStore
 
 from .forms import ChatForm, DocumentForm, ProjectForm
 from .models import Document, Project
-
 
 Settings.chunk_size = 512
 
@@ -51,7 +53,7 @@ def project_detail(request, pk):
                 content = doc.read().decode("utf-8")
                 llama_docs.append(
                     LlamaDocument(
-                        text=content, doc_id=document.pk, metadata={"name": doc.name}
+                        text=content, doc_id=document.pk, metadata={"name": doc.name, "document_id": document.pk}
                     )
                 )
 
@@ -174,3 +176,38 @@ def delete_document(request, project_id, document_id):
         return HttpResponseRedirect(
             reverse("project_detail", args=[project_id])
         )  # Redirect to project's detail view
+
+
+
+def read_document(request, project_id, document_id):
+    document = get_object_or_404(Document, pk=document_id)
+    start_char_idx = request.GET.get('start_char_idx', None)
+    end_char_idx = request.GET.get('end_char_idx', None)
+
+    # Assuming your documents are stored as files and text-based for simplicity.
+    # Adapt this part based on how you store and what kind of documents you manage.
+    try:
+        with open(document.file.path, 'r') as f:
+            content = escape(f.read())
+
+            # If both start and end indices are provided
+            if start_char_idx and end_char_idx:
+                start_char_idx = int(start_char_idx)
+                end_char_idx = int(end_char_idx)
+                
+                # Validate indices
+                if start_char_idx < 0 or end_char_idx > len(content) or start_char_idx > end_char_idx:
+                    raise Http404("Invalid character indices provided.")
+
+                # Insert <mark> tag for highlighting
+                pre_highlight = content[:start_char_idx]
+                highlighted_text = content[start_char_idx:end_char_idx]
+                post_highlight = content[end_char_idx:]
+
+                content = f"{pre_highlight}<mark>{highlighted_text}</mark>{post_highlight}"
+            
+            content = content.replace('\n', '<br>')
+            return HttpResponse(mark_safe(content), content_type='text/html')
+    except Exception as e:
+        # Handle file type not supported, file missing, etc.
+        raise Http404 from e
