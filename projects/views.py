@@ -1,6 +1,3 @@
-import logging
-import pdb
-
 from django.conf import settings
 from django.http import HttpResponseRedirect
 from django.utils.html import mark_safe, escape
@@ -8,12 +5,13 @@ from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from llama_index.core import Document as LlamaDocument
-from llama_index.core import (Settings, StorageContext, VectorStoreIndex,
-                              get_response_synthesizer,
-                              load_index_from_storage)
+from llama_index.core import (
+    Settings,
+    StorageContext,
+    VectorStoreIndex,
+    load_index_from_storage,
+)
 from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.query_engine import RetrieverQueryEngine
-from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.core.storage.index_store import SimpleIndexStore
 from llama_index.core.vector_stores import SimpleVectorStore
@@ -53,7 +51,9 @@ def project_detail(request, pk):
                 content = doc.read().decode("utf-8")
                 llama_docs.append(
                     LlamaDocument(
-                        text=content, doc_id=document.pk, metadata={"name": doc.name, "document_id": document.pk}
+                        text=content,
+                        doc_id=document.pk,
+                        metadata={"name": doc.name, "document_id": document.pk},
                     )
                 )
 
@@ -66,7 +66,8 @@ def project_detail(request, pk):
                     docstore=SimpleDocumentStore(),
                     vector_store=SimpleVectorStore(),
                     index_store=SimpleIndexStore(),
-                    persist_dir="./storage")
+                    persist_dir="./storage",
+                )
             except FileNotFoundError:
                 # create storage context using default stores
                 storage_context = StorageContext.from_defaults(
@@ -108,8 +109,26 @@ def project_create(request):
     return render(request, "projects/project_create.html", {"form": form})
 
 
+def get_serializable_source_nodes(source_nodes):
+    serializable_nodes = []
+    for node in source_nodes:
+        # Assuming 'metadata' and 'node' are sub-objects we need to access
+        serializable_node = {
+            "metadata": node.metadata,
+            "node": {
+                "start_char_idx": node.node.start_char_idx,
+                "end_char_idx": node.node.end_char_idx,
+            },
+        }
+        serializable_nodes.append(serializable_node)
+    return serializable_nodes
+
+
 def chat(request, pk):
     project = get_object_or_404(Project, pk=pk)
+
+    #  Conversation key unique to each project
+    conversation_key = f"conversation_{pk}"
 
     if request.method == "POST":
         form = ChatForm(request.POST)
@@ -124,43 +143,46 @@ def chat(request, pk):
             # if loading an index from a persist_dir containing multiple indexes
             index = load_index_from_storage(storage_context, index_id=f"{pk}")
 
-            # configure retriever
-            retriever = VectorIndexRetriever(
-                index=index,
-                similarity_top_k=10,
+            # get chat engine
+            chat_engine = index.as_chat_engine()
+            response = chat_engine.chat(message)
+
+            # Convert source_nodes to a serializable format
+            serializable_source_nodes = get_serializable_source_nodes(
+                response.source_nodes
             )
 
-            # configure response synthesizer
-            response_synthesizer = get_response_synthesizer(
-                response_mode="compact",
+            # Initialize conversation in session if not exist
+            if conversation_key not in request.session:
+                request.session[conversation_key] = []
+
+            # Append user message and response to conversation history
+            request.session[conversation_key].extend(
+                [
+                    {"role": "user", "text": message},
+                    {
+                        "role": "bot",
+                        "text": response.response,
+                        "source_nodes": serializable_source_nodes,
+                    },
+                ]
             )
 
-            # assemble query engine
-            query_engine = RetrieverQueryEngine(
-                retriever=retriever,
-                response_synthesizer=response_synthesizer,
-            )
+            # Make session modification to save immediately
+            request.session.modified = True
 
-            # query
-            response = query_engine.query(message)
-            return render(
-                request,
-                "chat_results.html",
-                {
-                    "form": form,
-                    "response": response,
-                    "used_snippets": response.source_nodes,
-                    "project_id": project.pk
-                },
-            )
+            # Redirect to clear POST data and avoid resubmitting form on refresh
+            return redirect("chat", pk=pk)
 
     else:
         form = ChatForm()
 
-    context = {"form": form, "project": project}
+    context = {
+        "form": form,
+        "project": project,
+        "conversation": request.session.get(conversation_key, []),
+    }
     return render(request, "projects/chat.html", context)
-
-
 
 
 def delete_document(request, project_id, document_id):
@@ -178,36 +200,41 @@ def delete_document(request, project_id, document_id):
         )  # Redirect to project's detail view
 
 
-
 def read_document(request, project_id, document_id):
     document = get_object_or_404(Document, pk=document_id)
-    start_char_idx = request.GET.get('start_char_idx', None)
-    end_char_idx = request.GET.get('end_char_idx', None)
+    start_char_idx = request.GET.get("start_char_idx", None)
+    end_char_idx = request.GET.get("end_char_idx", None)
 
     # Assuming your documents are stored as files and text-based for simplicity.
     # Adapt this part based on how you store and what kind of documents you manage.
     try:
-        with open(document.file.path, 'r') as f:
+        with open(document.file.path, "r") as f:
             content = escape(f.read())
 
             # If both start and end indices are provided
             if start_char_idx and end_char_idx:
                 start_char_idx = int(start_char_idx)
                 end_char_idx = int(end_char_idx)
-                
+
                 # Validate indices
-                if start_char_idx < 0 or end_char_idx > len(content) or start_char_idx > end_char_idx:
+                if (
+                    start_char_idx < 0
+                    or end_char_idx > len(content)
+                    or start_char_idx > end_char_idx
+                ):
                     raise Http404("Invalid character indices provided.")
 
                 # Insert <mark> tag for highlighting
                 pre_highlight = content[:start_char_idx]
                 highlighted_text = content[start_char_idx:end_char_idx]
                 post_highlight = content[end_char_idx:]
+                highlighted_text = (
+                    f'<span id="highlight"><mark>{highlighted_text}</mark></span>'
+                )
+                content = f"{pre_highlight}{highlighted_text}{post_highlight}"
 
-                content = f"{pre_highlight}<mark>{highlighted_text}</mark>{post_highlight}"
-            
-            content = content.replace('\n', '<br>')
-            return HttpResponse(mark_safe(content), content_type='text/html')
+            content = content.replace("\n", "<br>")
+            return HttpResponse(mark_safe(content), content_type="text/html")
     except Exception as e:
         # Handle file type not supported, file missing, etc.
         raise Http404 from e

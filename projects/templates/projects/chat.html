@@ -3,10 +3,38 @@
 {% extends 'base.html' %}
 
 {% block content %}
-    <h2>Chat</h2>
-    <form action="{% url 'chat' pk=project.pk %}" method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Send</button>
-    </form>
+<h2>Chat</h2>
+
+<!-- Display conversation -->
+{% if conversation %}
+<div id="chat-box">
+    {% for chat in conversation %}
+    <div class="{{ chat.role }}">
+        {{ chat.text }}
+        {% if chat.role == 'bot' %}
+        <ul class="list-inline">
+        {% for snippet in chat.source_nodes %}
+            <li class="list-inline-item">
+                <a href="{% url 'read_document' project.id snippet.metadata.document_id %}?start_char_idx={{ snippet.node.start_char_idx }}&end_char_idx={{ snippet.node.end_char_idx }}#highlight" 
+                title="{{ snippet.metadata.name }}" target="_blank">
+                [{{ forloop.counter }}]
+                </a>
+            </li>
+        {% endfor %}
+        </ul>
+    {% endif %}
+    </div>
+    
+    {% endfor %}
+</div>
+{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+    {{ form }}
+    <button type="submit">Send</button>
+</form>
+
+<a href="{% url 'project_detail' project.pk %}">Back to Project Files</a>
+
 {% endblock %}
