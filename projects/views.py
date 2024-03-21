@@ -22,10 +22,6 @@ from .models import Document, Project
 Settings.chunk_size = 512
 
 
-# Get an instance of a logger
-logger = logging.getLogger("file_chunking")
-
-
 def project_list(request):
     projects = Project.objects.all()
     return render(request, "projects/project_list.html", {"projects": projects})
@@ -42,8 +38,6 @@ def project_detail(request, pk):
             new_documents = request.FILES.getlist("documents")
             llama_docs = []
             for doc in new_documents:
-                logger.debug(f"Processing document: {doc.name}, size: {doc.size}")
-
                 document = Document.objects.create(
                     project=project, file=doc, name=doc.name
                 )
