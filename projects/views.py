@@ -10,6 +10,7 @@ from llama_index.core import (
     StorageContext,
     VectorStoreIndex,
     load_index_from_storage,
+    SimpleDirectoryReader,
 )
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.storage.docstore import SimpleDocumentStore
@@ -26,7 +27,6 @@ def project_list(request):
     projects = Project.objects.all()
     return render(request, "projects/project_list.html", {"projects": projects})
 
-
 def project_detail(request, pk):
     project = get_object_or_404(Project, pk=pk)
     new_documents = project.documents.all()
@@ -41,15 +41,15 @@ def project_detail(request, pk):
                 document = Document.objects.create(
                     project=project, file=doc, name=doc.name
                 )
-                doc.seek(0)
-                content = doc.read().decode("utf-8")
-                llama_docs.append(
-                    LlamaDocument(
-                        text=content,
-                        doc_id=document.pk,
-                        metadata={"name": doc.name, "document_id": document.pk},
-                    )
-                )
+                
+                
+                file_metadata = lambda filename: {"name": doc.name, "document_id": document.pk}
+                reader = SimpleDirectoryReader(input_files=[document.file.path], file_metadata=file_metadata)
+                docs = reader.load_data()
+                document.content = "".join([doc.text for doc in docs])
+                document.save()
+                
+                llama_docs.extend(docs)
 
             # create parser and parse document into nodes
             parser = SentenceSplitter(chunk_size=512)
@@ -138,7 +138,7 @@ def chat(request, pk):
             index = load_index_from_storage(storage_context, index_id=f"{pk}")
 
             # get chat engine
-            chat_engine = index.as_chat_engine()
+            chat_engine = index.as_chat_engine(similarity_top_k=10)
             response = chat_engine.chat(message)
 
             # Convert source_nodes to a serializable format
@@ -199,36 +199,30 @@ def read_document(request, project_id, document_id):
     start_char_idx = request.GET.get("start_char_idx", None)
     end_char_idx = request.GET.get("end_char_idx", None)
 
-    # Assuming your documents are stored as files and text-based for simplicity.
-    # Adapt this part based on how you store and what kind of documents you manage.
-    try:
-        with open(document.file.path, "r") as f:
-            content = escape(f.read())
+    content = escape(document.content)
 
-            # If both start and end indices are provided
-            if start_char_idx and end_char_idx:
-                start_char_idx = int(start_char_idx)
-                end_char_idx = int(end_char_idx)
+    # If both start and end indices are provided
+    if start_char_idx and end_char_idx:
+        start_char_idx = int(start_char_idx)
+        end_char_idx = int(end_char_idx)
 
-                # Validate indices
-                if (
-                    start_char_idx < 0
-                    or end_char_idx > len(content)
-                    or start_char_idx > end_char_idx
-                ):
-                    raise Http404("Invalid character indices provided.")
+        # Validate indices
+        if (
+            start_char_idx < 0
+            or end_char_idx > len(content)
+            or start_char_idx > end_char_idx
+        ):
+            raise Http404("Invalid character indices provided.")
 
-                # Insert <mark> tag for highlighting
-                pre_highlight = content[:start_char_idx]
-                highlighted_text = content[start_char_idx:end_char_idx]
-                post_highlight = content[end_char_idx:]
-                highlighted_text = (
-                    f'<span id="highlight"><mark>{highlighted_text}</mark></span>'
-                )
-                content = f"{pre_highlight}{highlighted_text}{post_highlight}"
+        # Insert <mark> tag for highlighting
+        pre_highlight = content[:start_char_idx]
+        highlighted_text = content[start_char_idx:end_char_idx]
+        post_highlight = content[end_char_idx:]
+        highlighted_text = (
+            f'<span id="highlight"><mark>{highlighted_text}</mark></span>'
+        )
+        content = f"{pre_highlight}{highlighted_text}{post_highlight}"
 
-            content = content.replace("\n", "<br>")
-            return HttpResponse(mark_safe(content), content_type="text/html")
-    except Exception as e:
-        # Handle file type not supported, file missing, etc.
-        raise Http404 from e
+    content = content.replace("\n", "<br>")
+    return HttpResponse(mark_safe(content), content_type="text/html")
+
