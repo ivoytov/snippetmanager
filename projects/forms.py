@@ -1,5 +1,5 @@
 from django import forms
-from .models import Project
+from .models import Project, Document
 
 class ProjectForm(forms.ModelForm):
     class Meta:
@@ -27,3 +27,15 @@ class MultipleFileField(forms.FileField):
 
 class DocumentForm(forms.Form):
     documents = MultipleFileField(help_text="Upload up to 20 documents.", required=False)
+
+
+class DocumentSelectionForm(forms.Form):
+    def __init__(self, *args, **kwargs):
+        project_id = kwargs.pop('project_id', None)
+        super(DocumentSelectionForm, self).__init__(*args, **kwargs)
+        if project_id is not None:
+            self.fields['document_1'].queryset = Document.objects.filter(project__id=project_id)
+            self.fields['document_2'].queryset = Document.objects.filter(project__id=project_id)
+    
+    document_1 = forms.ModelChoiceField(queryset=Document.objects.none(), label="Select the first document")
+    document_2 = forms.ModelChoiceField(queryset=Document.objects.none(), label="Select the second document")

@@ -1,0 +1,6 @@
+<h2>Select Documents</h2>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Proceed to Chat</button>
+</form>

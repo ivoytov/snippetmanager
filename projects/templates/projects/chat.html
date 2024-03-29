@@ -24,13 +24,11 @@
     
 </form>
 
-<!-- Assuming this is within your chat template -->
+
 <form method="post">
     {% csrf_token %}
-    
-    
-    <!-- Additional button to clear context -->
     <button type="submit" name="action" value="clear_context">Clear Context</button>
+    <button type="submit" name="action" value="clear_documents">Clear Models</button>
 </form>
 
 

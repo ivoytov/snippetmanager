@@ -4,19 +4,17 @@ from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.html import escape, mark_safe
-from llama_index.core import Document as LlamaDocument
-from llama_index.core import (Settings, StorageContext,
-                              load_index_from_storage)
+from llama_index.core import Settings
+from llama_index.llms.openai import OpenAI
 from llama_index.core.query_engine import PandasQueryEngine
-from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.storage.docstore import SimpleDocumentStore
-from llama_index.core.storage.index_store import SimpleIndexStore
-from llama_index.core.vector_stores import SimpleVectorStore
+from llama_index.core.agent import ReActAgent
+from llama_index.core.tools import QueryEngineTool, ToolMetadata
 
-from .forms import ChatForm, DocumentForm, ProjectForm
+from .forms import ChatForm, DocumentForm, ProjectForm, DocumentSelectionForm
 from .models import Document, Project
 
 Settings.chunk_size = 512
+Settings.llm = OpenAI(temperature=0, model="gpt-4", max_tokens=512)
 
 
 def project_list(request):
@@ -33,7 +31,7 @@ def project_detail(request, pk):
 
             # Handle document file uploads
             new_documents = request.FILES.getlist("documents")
-            
+
             for doc in new_documents:
                 if doc.name.endswith(".csv"):
                     document = Document.objects.create(
@@ -83,30 +81,74 @@ def chat(request, pk):
 
     #  Conversation key unique to each project
     conversation_key = f"conversation_{pk}"
+    selected_documents_key = f"selected_docs_{pk}"
 
-    if request.method == 'POST' and request.POST.get('action') == 'clear_context':
+    if request.method == "POST" and request.POST.get("action") == "clear_context":
         request.session.pop(conversation_key, None)
         request.session.modified = True
         return redirect("chat", pk=pk)
+    
+    if request.method == "POST" and request.POST.get("action") == "clear_documents":
+        request.session.pop(selected_documents_key, None)
+        request.session.modified = True
+        return redirect("chat", pk=pk)
 
-    if request.method == "POST" and request.POST.get('action') == 'chat':
-        
+    # If the document selection hasn't been made, show or process the selection form
+    if selected_documents_key not in request.session:
+        if request.method == "POST":
+            doc_form = DocumentSelectionForm(request.POST, project_id=pk)
+            if doc_form.is_valid():
+                request.session[selected_documents_key] = [
+                    doc_form.cleaned_data["document_1"].id,
+                    doc_form.cleaned_data["document_2"].id,
+                ]
+                request.session.modified = True
+                return redirect("chat", pk=pk)
+        else:
+            doc_form = DocumentSelectionForm(project_id=pk)
+
+        return render(request, "projects/document_selection.html", {"form": doc_form})
+
+    if request.method == "POST" and request.POST.get("action") == "chat":
+
         form = ChatForm(request.POST)
         if form.is_valid():
             message = form.cleaned_data["message"]
 
             # get all of the input docs for this project
-            docs = project.documents.all()
+            left_doc_id, right_doc_id = request.session[selected_documents_key]
+            left_doc = project.documents.get(id=left_doc_id)
+            right_doc = project.documents.get(id=right_doc_id)
 
-            query_engine = None
-            for doc in docs:
-                df = pd.read_csv(doc.file.path, skip_blank_lines=True, index_col=[0])
-                print(df)
-                query_engine = PandasQueryEngine(df=df, verbose=True)
+            left_df = pd.read_csv(left_doc.file.path, skip_blank_lines=True, index_col=[0])
+            left_query_engine = PandasQueryEngine(df=left_df, verbose=True)
 
-            if query_engine is None:
-                assert False
-            response = query_engine.query(
+            right_df = pd.read_csv(right_doc.file.path, skip_blank_lines=True, index_col=[0])
+            right_query_engine = PandasQueryEngine(df=right_df, verbose=True)
+
+            query_engine_tools = [
+                QueryEngineTool(
+                    query_engine=left_query_engine,
+                    metadata=ToolMetadata(
+                        name="internal_model",
+                        description="Provides information about our internal model for the target company. "
+                        "Use a detailed plain text question as input to the tool.",
+                    ),
+                ),
+                QueryEngineTool(
+                    query_engine=right_query_engine,
+                    metadata=ToolMetadata(
+                        name="external_model",
+                        description="Provides information about an external model for the target company. "
+                        "Use a detailed plain text question as input to the tool.",
+                    ),
+                ),
+            ]
+
+            # initialize ReAct agent
+            agent = ReActAgent.from_tools(query_engine_tools, verbose=True)
+            
+            response = agent.chat(
                 message,
             )
 
@@ -148,7 +190,7 @@ def delete_document(request, project_id, document_id):
         project = get_object_or_404(Project, pk=project_id)
         document = get_object_or_404(Document, pk=document_id, project=project)
         document.delete()  # This deletes the document object from the database
-        
+
         return HttpResponseRedirect(
             reverse("project_detail", args=[project_id])
         )  # Redirect to project's detail view
