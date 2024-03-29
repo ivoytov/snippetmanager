@@ -11,18 +11,6 @@
     {% for chat in conversation %}
     <div class="{{ chat.role }}">
         {{ chat.text }}
-        {% if chat.role == 'bot' %}
-        <ul class="list-inline">
-        {% for snippet in chat.source_nodes %}
-            <li class="list-inline-item">
-                <a href="{% url 'read_document' project.id snippet.metadata.document_id %}?start_char_idx={{ snippet.node.start_char_idx }}&end_char_idx={{ snippet.node.end_char_idx }}#highlight" 
-                title="{{ snippet.metadata.name }}" target="_blank">
-                [{{ forloop.counter }}]
-                </a>
-            </li>
-        {% endfor %}
-        </ul>
-    {% endif %}
     </div>
     
     {% endfor %}
@@ -32,8 +20,19 @@
 <form method="post">
     {% csrf_token %}
     {{ form }}
-    <button type="submit">Send</button>
+    <button type="submit" name="action" value="chat">Send</button>
+    
 </form>
+
+<!-- Assuming this is within your chat template -->
+<form method="post">
+    {% csrf_token %}
+    
+    
+    <!-- Additional button to clear context -->
+    <button type="submit" name="action" value="clear_context">Clear Context</button>
+</form>
+
 
 <a href="{% url 'project_detail' project.pk %}">Back to Project Files</a>
 

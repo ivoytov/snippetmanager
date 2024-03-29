@@ -1,17 +1,13 @@
+import pandas as pd
 from django.conf import settings
-from django.http import HttpResponseRedirect
-from django.utils.html import mark_safe, escape
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.html import escape, mark_safe
 from llama_index.core import Document as LlamaDocument
-from llama_index.core import (
-    Settings,
-    StorageContext,
-    VectorStoreIndex,
-    load_index_from_storage,
-    SimpleDirectoryReader,
-)
+from llama_index.core import (Settings, StorageContext,
+                              load_index_from_storage)
+from llama_index.core.query_engine import PandasQueryEngine
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.core.storage.index_store import SimpleIndexStore
@@ -27,6 +23,7 @@ def project_list(request):
     projects = Project.objects.all()
     return render(request, "projects/project_list.html", {"projects": projects})
 
+
 def project_detail(request, pk):
     project = get_object_or_404(Project, pk=pk)
     new_documents = project.documents.all()
@@ -36,49 +33,12 @@ def project_detail(request, pk):
 
             # Handle document file uploads
             new_documents = request.FILES.getlist("documents")
-            llama_docs = []
+            
             for doc in new_documents:
-                document = Document.objects.create(
-                    project=project, file=doc, name=doc.name
-                )
-                
-                
-                file_metadata = lambda filename: {"name": doc.name, "document_id": document.pk}
-                reader = SimpleDirectoryReader(input_files=[document.file.path], file_metadata=file_metadata)
-                docs = reader.load_data()
-                document.content = "".join([doc.text for doc in docs])
-                document.save()
-                
-                llama_docs.extend(docs)
-
-            # create parser and parse document into nodes
-            parser = SentenceSplitter(chunk_size=512)
-            nodes = parser.get_nodes_from_documents(llama_docs)
-
-            try:
-                storage_context = StorageContext.from_defaults(
-                    docstore=SimpleDocumentStore(),
-                    vector_store=SimpleVectorStore(),
-                    index_store=SimpleIndexStore(),
-                    persist_dir="./storage",
-                )
-            except FileNotFoundError:
-                # create storage context using default stores
-                storage_context = StorageContext.from_defaults(
-                    docstore=SimpleDocumentStore(),
-                    vector_store=SimpleVectorStore(),
-                    index_store=SimpleIndexStore(),
-                )
-
-            # create (or load) docstore and add nodes
-            storage_context.docstore.add_documents(nodes)
-
-            # build index
-            index = VectorStoreIndex(nodes, storage_context=storage_context)
-
-            # can also set index_id to save multiple indexes to the same folder
-            index.set_index_id(pk)
-            index.storage_context.persist(persist_dir="./storage")
+                if doc.name.endswith(".csv"):
+                    document = Document.objects.create(
+                        project=project, file=doc, name=doc.name
+                    )
 
             return redirect(
                 "project_detail", pk=pk
@@ -124,26 +84,30 @@ def chat(request, pk):
     #  Conversation key unique to each project
     conversation_key = f"conversation_{pk}"
 
-    if request.method == "POST":
+    if request.method == 'POST' and request.POST.get('action') == 'clear_context':
+        request.session.pop(conversation_key, None)
+        request.session.modified = True
+        return redirect("chat", pk=pk)
+
+    if request.method == "POST" and request.POST.get('action') == 'chat':
+        
         form = ChatForm(request.POST)
         if form.is_valid():
             message = form.cleaned_data["message"]
 
-            # to load index later, make sure you setup the storage context
-            # this will loaded the persisted stores from persist_dir
-            storage_context = StorageContext.from_defaults(persist_dir="./storage")
+            # get all of the input docs for this project
+            docs = project.documents.all()
 
-            # then load the index object
-            # if loading an index from a persist_dir containing multiple indexes
-            index = load_index_from_storage(storage_context, index_id=f"{pk}")
+            query_engine = None
+            for doc in docs:
+                df = pd.read_csv(doc.file.path, skip_blank_lines=True, index_col=[0])
+                print(df)
+                query_engine = PandasQueryEngine(df=df, verbose=True)
 
-            # get chat engine
-            chat_engine = index.as_chat_engine(similarity_top_k=10)
-            response = chat_engine.chat(message)
-
-            # Convert source_nodes to a serializable format
-            serializable_source_nodes = get_serializable_source_nodes(
-                response.source_nodes
+            if query_engine is None:
+                assert False
+            response = query_engine.query(
+                message,
             )
 
             # Initialize conversation in session if not exist
@@ -156,8 +120,8 @@ def chat(request, pk):
                     {"role": "user", "text": message},
                     {
                         "role": "bot",
-                        "text": response.response,
-                        "source_nodes": serializable_source_nodes,
+                        "text": str(response),
+                        "source_nodes": None,
                     },
                 ]
             )
@@ -184,11 +148,7 @@ def delete_document(request, project_id, document_id):
         project = get_object_or_404(Project, pk=project_id)
         document = get_object_or_404(Document, pk=document_id, project=project)
         document.delete()  # This deletes the document object from the database
-        # update index
-        storage_context = StorageContext.from_defaults(persist_dir="./storage")
-        index = load_index_from_storage(storage_context, index_id=f"{project_id}")
-        index.delete_ref_doc(f"{document_id}")
-
+        
         return HttpResponseRedirect(
             reverse("project_detail", args=[project_id])
         )  # Redirect to project's detail view
@@ -225,4 +185,3 @@ def read_document(request, project_id, document_id):
 
     content = content.replace("\n", "<br>")
     return HttpResponse(mark_safe(content), content_type="text/html")
-
