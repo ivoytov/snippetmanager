@@ -148,8 +148,8 @@ def chat(request, pk):
             # initialize ReAct agent
             agent = ReActAgent.from_tools(query_engine_tools, verbose=True)
             
-            response = agent.chat(
-                message,
+            response = agent.query(
+                message
             )
 
             # Initialize conversation in session if not exist
