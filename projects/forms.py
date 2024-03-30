@@ -37,5 +37,5 @@ class DocumentSelectionForm(forms.Form):
             self.fields['document_1'].queryset = Document.objects.filter(project__id=project_id)
             self.fields['document_2'].queryset = Document.objects.filter(project__id=project_id)
     
-    document_1 = forms.ModelChoiceField(queryset=Document.objects.none(), label="Select the first document")
-    document_2 = forms.ModelChoiceField(queryset=Document.objects.none(), label="Select the second document")
+    document_1 = forms.ModelChoiceField(queryset=Document.objects.none(), label="Select the internal model")
+    document_2 = forms.ModelChoiceField(queryset=Document.objects.none(), label="Select the external model")

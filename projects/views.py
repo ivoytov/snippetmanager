@@ -4,17 +4,18 @@ from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.html import escape, mark_safe
+from llama_index.agent.openai import OpenAIAgentWorker
 from llama_index.core import Settings
-from llama_index.llms.openai import OpenAI
+from llama_index.core.agent import AgentRunner
 from llama_index.core.query_engine import PandasQueryEngine
-from llama_index.core.agent import ReActAgent
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
+from llama_index.llms.openai import OpenAI
 
-from .forms import ChatForm, DocumentForm, ProjectForm, DocumentSelectionForm
+from .forms import ChatForm, DocumentForm, DocumentSelectionForm, ProjectForm
 from .models import Document, Project
 
 Settings.chunk_size = 512
-Settings.llm = OpenAI(temperature=0, model="gpt-4", max_tokens=512)
+# Settings.llm = OpenAI(temperature=0, model="gpt-4-0125-preview", max_tokens=512)
 
 
 def project_list(request):
@@ -61,19 +62,23 @@ def project_create(request):
     return render(request, "projects/project_create.html", {"form": form})
 
 
-def get_serializable_source_nodes(source_nodes):
-    serializable_nodes = []
-    for node in source_nodes:
+def get_serializable_steps(tool_output):
+    serializable_tools = []
+    for tool in tool_output:
         # Assuming 'metadata' and 'node' are sub-objects we need to access
-        serializable_node = {
-            "metadata": node.metadata,
-            "node": {
-                "start_char_idx": node.node.start_char_idx,
-                "end_char_idx": node.node.end_char_idx,
+        serializable_tool = {
+            "content": tool.content,
+            "raw_input": tool.raw_input["input"],
+            "raw_output": tool.raw_output.response,
+            "metadata": {
+                "pandas_instruction_str": tool.raw_output.metadata[
+                    "pandas_instruction_str"
+                ],
+                "raw_pandas_output": tool.raw_output.metadata["raw_pandas_output"],
             },
         }
-        serializable_nodes.append(serializable_node)
-    return serializable_nodes
+        serializable_tools.append(serializable_tool)
+    return serializable_tools
 
 
 def chat(request, pk):
@@ -87,7 +92,7 @@ def chat(request, pk):
         request.session.pop(conversation_key, None)
         request.session.modified = True
         return redirect("chat", pk=pk)
-    
+
     if request.method == "POST" and request.POST.get("action") == "clear_documents":
         request.session.pop(selected_documents_key, None)
         request.session.modified = True
@@ -120,13 +125,17 @@ def chat(request, pk):
             left_doc = project.documents.get(id=left_doc_id)
             right_doc = project.documents.get(id=right_doc_id)
 
-            left_df = pd.read_csv(left_doc.file.path, skip_blank_lines=True, index_col=[0])
+            left_df = pd.read_csv(
+                left_doc.file.path, skip_blank_lines=True, index_col=[0]
+            ).astype(float)
             left_query_engine = PandasQueryEngine(df=left_df, verbose=True)
 
-            right_df = pd.read_csv(right_doc.file.path, skip_blank_lines=True, index_col=[0])
+            right_df = pd.read_csv(
+                right_doc.file.path, skip_blank_lines=True, index_col=[0]
+            ).astype(float)
             right_query_engine = PandasQueryEngine(df=right_df, verbose=True)
 
-            query_engine_tools = [
+            tools = [
                 QueryEngineTool(
                     query_engine=left_query_engine,
                     metadata=ToolMetadata(
@@ -146,11 +155,26 @@ def chat(request, pk):
             ]
 
             # initialize ReAct agent
-            agent = ReActAgent.from_tools(query_engine_tools, verbose=True)
-            
-            response = agent.query(
-                message
-            )
+            openai_step_engine = OpenAIAgentWorker.from_tools(tools, verbose=True)
+            agent = AgentRunner(openai_step_engine)
+            # agent = ReActAgent.from_tools(query_engine_tools, verbose=True)
+
+            task = agent.create_task(message)
+
+            # execute step
+            response = None
+            while response is None:
+                step_output = agent.run_step(task.task_id)
+
+                # if step_output is done, finalize response
+                if step_output.is_last:
+                    response = agent.finalize_response(task.task_id)
+
+            # list tasks
+            # task.list_tasks()
+
+            # get completed steps
+            # task.get_completed_steps(task.task_id)
 
             # Initialize conversation in session if not exist
             if conversation_key not in request.session:
@@ -163,7 +187,9 @@ def chat(request, pk):
                     {
                         "role": "bot",
                         "text": str(response),
-                        "source_nodes": None,
+                        "source_tools": get_serializable_steps(
+                            step_output.output.sources
+                        ),
                     },
                 ]
             )

@@ -11,8 +11,22 @@
     {% for chat in conversation %}
     <div class="{{ chat.role }}">
         {{ chat.text }}
+    {% if chat.role == 'bot' %}
+        <ul class="list-inline">
+        {% for tool in chat.source_tools %}
+            <li>
+                <small>[{{ forloop.counter }}] 
+                {{ tool.content }}<br>
+                {{ tool.raw_input }}<br>
+                <p class="font-monospace">{{ tool.metadata.pandas_instruction_str }}<br>
+                {{ tool.metadata.raw_pandas_output }}<br>
+                </p>
+                </small>
+            </li>
+        {% endfor %}
+        </ul>
+    {% endif %}
     </div>
-    
     {% endfor %}
 </div>
 {% endif %}
