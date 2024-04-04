@@ -15,7 +15,7 @@ from .forms import ChatForm, DocumentForm, DocumentSelectionForm, ProjectForm
 from .models import Document, Project
 
 Settings.chunk_size = 512
-# Settings.llm = OpenAI(temperature=0, model="gpt-4-0125-preview", max_tokens=512)
+Settings.llm = OpenAI(temperature=0, model="gpt-4-0125-preview", max_tokens=512)
 
 
 def project_list(request):
