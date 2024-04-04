@@ -12,19 +12,25 @@
     <div class="{{ chat.role }}">
         {{ chat.text }}
     {% if chat.role == 'bot' %}
-        <ul class="list-inline">
-        {% for tool in chat.source_tools %}
-            <li>
-                <small>[{{ forloop.counter }}] 
-                {{ tool.content }}<br>
-                {{ tool.raw_input }}<br>
-                <p class="font-monospace">{{ tool.metadata.pandas_instruction_str }}<br>
-                {{ tool.metadata.raw_pandas_output }}<br>
-                </p>
-                </small>
-            </li>
-        {% endfor %}
-        </ul>
+        <button class="btn btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#source-tools-{{ forloop.counter }}" aria-expanded="false" aria-controls="source-tools-{{ forloop.counter }}">
+            Show Details
+        </button>
+        <div class="collapse" id="source-tools-{{ forloop.counter }}">
+        <ul>
+            {% for tool in chat.source_tools %}
+                <li>
+                    <small>[{{ forloop.counter }}] 
+                    {{ tool.content }}<br>
+                    {{ tool.raw_input }}<br>
+                    <p class="font-monospace">{{ tool.metadata.pandas_instruction_str }}<br>
+                    {{ tool.metadata.raw_pandas_output }}<br>
+                    </p>
+                    </small>
+                </li>
+            {% endfor %}
+            </ul>
+        </div>
+        
     {% endif %}
     </div>
     {% endfor %}
