@@ -10,12 +10,14 @@
 <div id="chat-box">
     {% for chat in conversation %}
     <div class="{{ chat.role }}">
-        {{ chat.text }}
+        <div>{{ chat.text }}</div>
     {% if chat.role == 'bot' %}
-        <button class="btn btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#source-tools-{{ forloop.counter }}" aria-expanded="false" aria-controls="source-tools-{{ forloop.counter }}">
+        <div>
+            <button class="btn btn-light btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#source-tools-{{ forloop.counter }}" aria-expanded="false" aria-controls="source-tools-{{ forloop.counter }}">    
             Show Details
-        </button>
-        <div class="collapse" id="source-tools-{{ forloop.counter }}">
+            </button>
+        </div>
+        <div class="collapse multi-collapse" id="source-tools-{{ forloop.counter }}">
         <ul>
             {% for tool in chat.source_tools %}
                 <li>
