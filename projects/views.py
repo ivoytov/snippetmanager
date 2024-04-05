@@ -1,7 +1,7 @@
 import pandas as pd
-from django.conf import settings
 from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
+from django.core.exceptions import ObjectDoesNotExist
 from django.urls import reverse
 from django.utils.html import escape, mark_safe
 from llama_index.agent.openai import OpenAIAgentWorker
@@ -10,6 +10,7 @@ from llama_index.core.agent import AgentRunner
 from llama_index.core.query_engine import PandasQueryEngine
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
 from llama_index.llms.openai import OpenAI
+
 
 from .forms import ChatForm, DocumentForm, DocumentSelectionForm, ProjectForm
 from .models import Document, Project
@@ -122,8 +123,16 @@ def chat(request, pk):
 
             # get all of the input docs for this project
             left_doc_id, right_doc_id = request.session[selected_documents_key]
-            left_doc = project.documents.get(id=left_doc_id)
-            right_doc = project.documents.get(id=right_doc_id)
+            try:
+                left_doc = project.documents.get(id=left_doc_id)
+                right_doc = project.documents.get(id=right_doc_id)
+
+            except ObjectDoesNotExist:
+                # If either document does not exist, prepare a new document selection form.
+                doc_form = DocumentSelectionForm(project_id=pk)  # Assuming form expects a project instance
+                
+                # And render the document selection page again.
+                return render(request, "projects/document_selection.html", {"form": doc_form})
 
             left_df = pd.read_csv(
                 left_doc.file.path, skip_blank_lines=True, index_col=[0]
@@ -157,7 +166,6 @@ def chat(request, pk):
             # initialize ReAct agent
             openai_step_engine = OpenAIAgentWorker.from_tools(tools, verbose=True)
             agent = AgentRunner(openai_step_engine)
-            # agent = ReActAgent.from_tools(query_engine_tools, verbose=True)
 
             task = agent.create_task(message)
 
@@ -169,12 +177,6 @@ def chat(request, pk):
                 # if step_output is done, finalize response
                 if step_output.is_last:
                     response = agent.finalize_response(task.task_id)
-
-            # list tasks
-            # task.list_tasks()
-
-            # get completed steps
-            # task.get_completed_steps(task.task_id)
 
             # Initialize conversation in session if not exist
             if conversation_key not in request.session:

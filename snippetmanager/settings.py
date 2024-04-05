@@ -26,8 +26,8 @@ SECRET_KEY = '*sg_+gbpf32zymb-+vprqw%8zkc*&pmwou2e%@e4)q8vltmm#e'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'jellyfish-app-jm2rt.ondigitalocean.app', 'modelcheck.voytov.com']
-CSRF_TRUSTED_ORIGINS = ['https://jellyfish-app-jm2rt.ondigitalocean.app', 'https://modelcheck.voytov.com']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'jellyfish-app-jm2rt.ondigitalocean.app', 'modelchecker.voytov.com']
+CSRF_TRUSTED_ORIGINS = ['https://jellyfish-app-jm2rt.ondigitalocean.app', 'https://modelchecker.voytov.com']
 
 # Application definition
 

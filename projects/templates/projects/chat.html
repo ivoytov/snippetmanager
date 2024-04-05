@@ -12,38 +12,53 @@
     <div class="{{ chat.role }}">
         <div style="white-space: pre-line;">{{ chat.text }}</div>
         {% if chat.role == 'bot' %}
-            <div>
-                <button class="btn btn-light btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#source-tools-{{ forloop.counter }}" aria-expanded="false" aria-controls="source-tools-{{ forloop.counter }}">    
+        <div>
+            <button class="btn btn-light btn-sm" type="button" data-bs-toggle="collapse"
+                data-bs-target="#source-tools-{{ forloop.counter }}" aria-expanded="false"
+                aria-controls="source-tools-{{ forloop.counter }}">
                 Show Details
-                </button>
-            </div>
-            <div class="collapse multi-collapse" id="source-tools-{{ forloop.counter }}">
+            </button>
+        </div>
+        <div class="collapse multi-collapse" id="source-tools-{{ forloop.counter }}">
             <ul>
                 {% for tool in chat.source_tools %}
-                    <li>
-                        <small>[{{ forloop.counter }}] 
+                <li>
+                    <small>[{{ forloop.counter }}]
                         <p>{{ tool.content }}</p>
                         <p>{{ tool.raw_input }}</p>
                         <p class="font-monospace">{{ tool.metadata.pandas_instruction_str }}<br>
-                        {{ tool.metadata.raw_pandas_output }}
+                            {{ tool.metadata.raw_pandas_output }}
                         </p>
-                        </small>
-                    </li>
+                    </small>
+                </li>
                 {% endfor %}
             </ul>
-            </div>
+        </div>
         {% endif %}
     </div>
     {% endfor %}
 </div>
 {% endif %}
 
-<form method="post">
+<form method="post" id="chatForm">
     {% csrf_token %}
     {{ form }}
+    <input type="hidden" name="action" value="chat">
     <button type="submit" name="action" value="chat">Send</button>
-    
 </form>
+
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const chatInput = document.getElementById('chatMessage');
+        chatInput.addEventListener('keydown', function (e) {
+            // Check if Enter key is pressed without the Shift key.
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();  // Prevent the default action (inserting new line).
+                document.getElementById('chatForm').submit();  // Submit the form.
+            }
+        });
+    });
+</script>
 
 
 <form method="post">
@@ -51,6 +66,8 @@
     <button type="submit" name="action" value="clear_context">Clear Context</button>
     <button type="submit" name="action" value="clear_documents">Clear Models</button>
 </form>
+
+
 
 
 <a href="{% url 'project_detail' project.pk %}">Back to Project Files</a>
